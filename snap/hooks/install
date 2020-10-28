@@ -1,0 +1,23 @@
+#!/bin/bash -ex
+
+# create kuiper directories in $SNAP_DATA
+if [ ! -f "$SNAP_DATA/kuiper/data" ]; then
+    mkdir -p "$SNAP_DATA/kuiper/data"
+    mkdir -p "$SNAP_DATA/kuiper/etc/sources"
+    mkdir -p "$SNAP_DATA/kuiper/etc/plugins"
+
+    cp "$SNAP/etc/"*.yaml "$SNAP_DATA/kuiper/etc"
+    cp "$SNAP/etc/sources/"*.yaml "$SNAP_DATA/kuiper/etc/sources"
+#   cp "$SNAP/etc/plugins/"*.yaml "$SNAP_DATA/kuiper/etc/plugins"
+fi
+
+# finally, disable and turn off non-default services:
+#
+# - app-service-configurable (used for rules integration)
+# - device-virtual
+# - kuiper (replacement for support-rulesengine)
+# - support-*
+# - sys-mgmt-agent (see https://github.com/edgexfoundry/edgex-go/issues/2486)
+#
+# snapctl set kuiper=off
+# snapctl stop --disable "kuiper.kuiper"

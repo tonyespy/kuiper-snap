@@ -1,0 +1,106 @@
+name: kuiper-snap
+base: core18
+type: app
+version: "0.4.2"
+summary: kuiper
+description: |
+  kuiper test snap
+
+architectures:
+  - build-on: amd64
+
+grade: devel
+confinement: devmode
+
+# This applies to all apps
+apps:
+  kuiper:
+    adapter: full
+    command: bin/kuiper-server
+    environment:
+      KuiperBaseKey: $SNAP_DATA/kuiper
+
+      # 0.4.2 env vars
+      KUIPER_CONSOLE_LOG: "true"
+      KUIPER_REST_PORT: 48075
+      KUIPER_RESTPORT: 48075
+      EDGEX_SERVER: localhost
+      EDGEX_SERVICE_SERVER: http://localhost:48080
+      EDGEX_TOPIC: events
+      EDGEX_PROTOCOL: tcp
+      EDGEX_PORT: 5566
+
+    plugs: [network, network-bind, snapd-control]
+  kuiper-cli:
+    adapter: full
+    command: bin/kuiper-cli
+    environment:
+      KuiperBaseKey: $SNAP_DATA/kuiper
+    plugs: [home, network, network-bind]
+
+parts:
+  go-build-helper:
+    plugin: dump
+    # see comment for static-packages part about specifying a source part here
+    source: snap/local/build-helpers
+    prime: [-*]
+
+  go:
+    plugin: nil
+    source: snap/local/build-helpers
+    after: [go-build-helper]
+    override-build: |
+      # use dpkg architecture to figure out our target arch
+      # note - we specifically don't use arch
+      case "$(dpkg --print-architecture)" in
+        amd64)
+          FILE_NAME=go1.13.8.linux-amd64.tar.gz
+          FILE_HASH=0567734d558aef19112f2b2873caa0c600f1b4a5827930eb5a7f35235219e9d8
+          ;;
+        arm64)
+          FILE_NAME=go1.13.8.linux-arm64.tar.gz
+          FILE_HASH=b46c0235054d0eb69a295a2634aec8a11c7ae19b3dc53556a626b89dc1f8cdb0
+          ;;
+      esac
+      # download the archive, failing on ssl cert problems
+      curl https://dl.google.com/go/$FILE_NAME -O
+      echo "$FILE_HASH $FILE_NAME" > sha256
+      sha256sum -c sha256 | grep OK
+      mkdir -p $SNAPCRAFT_STAGE/go1.13
+      tar -C $SNAPCRAFT_STAGE/go1.13 -xf "$FILE_NAME" --strip-components=1
+    prime:
+      - "-*"
+
+  kuiper:
+    source: https://github.com/emqx/kuiper.git
+    source-tag: 0.9.1
+    after: [go]    
+    plugin: make
+    build-packages:
+      - curl
+      - gcc
+      - libzmq3-dev
+      - pkg-config
+      - zip
+    override-build: |
+      export PATH="$SNAPCRAFT_STAGE/go1.13/bin:$GOPATH/bin:$PATH"
+
+      cd $SNAPCRAFT_PART_SRC
+      export BUILD_PATH=$SNAPCRAFT_PART_BUILD
+      export PACKAGES_PATH=$SNAPCRAFT_PART_INSTALL
+      make build_with_edgex
+      make real_pkg
+      cd $SNAPCRAFT_PART_INSTALL
+      tar -xvf kuiper*.tar.gz --strip-components=1
+      rm *.zip *.gz
+
+      install -DT "$SNAPCRAFT_PART_SRC/LICENSE" \
+         "$SNAPCRAFT_PART_INSTALL/usr/share/doc/kuiper/LICENSE"
+    organize:
+      bin/cli: bin/kuiper-cli
+      bin/server: bin/kuiper-server
+    stage:
+      - -etc/mqtt_source.yaml
+    stage-packages:
+      - libzmq5
+
